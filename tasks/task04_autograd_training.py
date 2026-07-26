@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import torch
-
-from tasks.task03_stable_losses import cross_entropy_from_logits
+import torch.nn.functional as F
 
 def train_logistic_regression(
     X: torch.Tensor,
@@ -32,24 +31,22 @@ def train_logistic_regression(
         Do not use ``nn.Module`` or ``torch.optim``.
     """
     _, D = X.shape
-    y_long = y.long()
+    y = y.long()
     w = torch.zeros((D,1), requires_grad=True)
     b = torch.zeros((1,), requires_grad=True)
-
     loss_history = []
     for _ in range(steps):
         w.grad = None
         b.grad = None
-
-        scores = X @ w + b # [N,1]
-        logits = torch.cat((torch.zeros_like(scores), scores), dim=1)
-        loss = cross_entropy_from_logits(logits, y_long)
+        scores = X @ w + b
+        logits = torch.cat(
+            (torch.zeros_like(scores), scores),
+            dim=1
+        )
+        loss = F.cross_entropy(logits, y)
         loss.backward()
-
         loss_history.append(loss.item())
-
         with torch.no_grad():
             w -= learning_rate * w.grad
             b -= learning_rate * b.grad
-    
     return (w, b, loss_history)
