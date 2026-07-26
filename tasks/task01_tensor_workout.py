@@ -19,7 +19,7 @@ def creation_workout() -> dict[str, torch.Tensor]:
     return {
         "tensor": torch.tensor([1,2]),
         "zeros": torch.zeros(size=(2,2)),
-        "ones": torch.zeros(size=(6,7)),
+        "ones": torch.ones(size=(6,7)),
         "empty": torch.empty(size=(4,2)),
         "arange": torch.arange(0,10,1),
         "linspace": torch.linspace(0,6,7),
