@@ -17,15 +17,15 @@ def creation_workout() -> dict[str, torch.Tensor]:
         few broad properties, not one exact set of values.
     """
     return {
-        "tensor": torch.tensor([1,2]),
-        "zeros": torch.zeros(size=(2,2)),
-        "ones": torch.zeros(size=(6,7)),
-        "empty": torch.empty(size=(4,2)),
-        "arange": torch.arange(0,10,1),
-        "linspace": torch.linspace(0,6,7),
-        "randn": torch.randn(size=(4,2)),
-        "full": torch.full(size=(3,3,2), fill_value=1),
-        "eye": torch.eye(5),
+        "tensor": torch.tensor([1,2,3]),
+        "zeros": torch.zeros(size=(4,2)),
+        "ones": torch.ones(size=(6,7)),
+        "empty": torch.empty(size=(6,9)),
+        "arange": torch.arange(start=0,end=10,step=1),
+        "linspace": torch.linspace(start=0,end=6,steps=7),
+        "randn": torch.randn(size=(2,3)),
+        "full": torch.full(size=(4,5), fill_value=2203),
+        "eye": torch.eye(8),
     }
 
 
@@ -52,20 +52,21 @@ def tensor_workout(x: torch.Tensor) -> dict[str, torch.Tensor]:
     Constraints:
         Do not use Python loops and do not hard-code input dimensions.
     """
-    sequence_mean = x.mean(dim=1,keepdim=True)
-    x_centered = x - sequence_mean
-    x_variance = (x_centered * x_centered).mean(dim=1, keepdim=True)
-    x_stdev_inv = torch.rsqrt(x_variance)
-    normalized = x_centered * x_stdev_inv
+    sequence_mean = x.mean(dim=1, keepdim=True)
+    x_recenter = x - sequence_mean
+    sequence_var = (x_recenter * x_recenter).mean(dim=1, keepdim=True)
+    sequence_stdev_inv = torch.rsqrt(sequence_var)
+    normalized = x_recenter * sequence_stdev_inv
+
     return {
         "last_token": x[:,-1,:],
         "even_features": x[:,:,::2],
         "first_two_batches": x[:2,:,:],
-        "positive_mask": x > 0,
+        "positive_mask": x>0,
         "positive_values": x[x>0],
         "sequence_mean": sequence_mean,
-        "feature_max": x.amax(dim=2),
+        "feature_max": x.amax(dim=2, keepdim=False),
         "normalized": normalized,
         "doubled_sequence": torch.cat((x,x), dim=1),
-        "flattened_tokens": x.reshape(-1, x.shape[2]),
+        "flattened_tokens": x.reshape(-1,x.shape[-1]),
     }
