@@ -1,0 +1,7 @@
+# The image build only needs requirements.txt and .devcontainer/.
+# Source code is mounted at runtime rather than copied into the image.
+**
+
+!requirements.txt
+!.devcontainer/
+!.devcontainer/**

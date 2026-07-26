@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+
+FROM mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+
+# The virtual environment is inside Docker's Linux filesystem,
+# not under the macOS bind-mounted workspace.
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+USER root
+
+# Create the explicit virtual environment.
+RUN python3 -m venv "${VIRTUAL_ENV}" \
+    && "${VIRTUAL_ENV}/bin/python" -m pip install \
+        --upgrade pip setuptools wheel
+
+# Install the CPU-only PyTorch wheel.
+#
+# The cache mount persists downloaded packages between builds without
+# putting pip's download cache into the final image.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    "${VIRTUAL_ENV}/bin/python" -m pip install \
+        torch \
+        --index-url https://download.pytorch.org/whl/cpu
+
+# Copy only the dependency declaration before installing dependencies.
+# Changing source files will not invalidate this Docker build layer.
+COPY requirements.txt /tmp/requirements.txt
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    "${VIRTUAL_ENV}/bin/python" -m pip install \
+        -r /tmp/requirements.txt \
+    && chown -R vscode:vscode "${VIRTUAL_ENV}"
+
+# Work as an ordinary user when developing.
+USER vscode
+
+WORKDIR /workspace
+
+# Keeps the development container running for VS Code.
+CMD ["sleep", "infinity"]

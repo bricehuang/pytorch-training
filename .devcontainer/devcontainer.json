@@ -1,0 +1,47 @@
+{
+  "name": "PyTorch Interview CPU",
+
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  "workspaceFolder": "/workspace",
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+  "remoteUser": "vscode",
+
+  "remoteEnv": {
+    "VIRTUAL_ENV": "/opt/venv",
+    "PATH": "/opt/venv/bin:${containerEnv:PATH}"
+  },
+
+  "runArgs": [
+    "--init"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-toolsai.jupyter"
+      ],
+
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": [
+          "tests"
+        ],
+
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  "postCreateCommand": "/opt/venv/bin/python -c \"import torch; print(f'PyTorch {torch.__version__}; CUDA available: {torch.cuda.is_available()}; CPU threads: {torch.get_num_threads()}')\""
+}
