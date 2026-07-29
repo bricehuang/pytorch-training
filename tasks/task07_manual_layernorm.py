@@ -17,11 +17,7 @@ class ManualLayerNormFunction(torch.autograd.Function):
         bias: torch.Tensor,
         eps: float,
     ) -> torch.Tensor:
-        var, mean = torch.var_mean(x, dim=-1, correction=0, keepdim=True)
-        x_normalized = (x - mean) * torch.rsqrt(var + eps)
-        res = x_normalized * weight + bias
-        # TODO save data to ctx
-        return res
+        raise NotImplementedError("Implement ManualLayerNormFunction.forward")
 
     @staticmethod
     def backward(
@@ -36,9 +32,7 @@ class ManualLayerNorm(nn.Module):
 
     def __init__(self, normalized_dim: int, eps: float = 1e-5) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(normalized_dim))
-        self.bias = nn.Parameter(torch.zeros(normalized_dim))
-        self.eps = eps
+        raise NotImplementedError("Implement ManualLayerNorm.__init__")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return ManualLayerNormFunction.apply(x, self.weight, self.bias, self.eps)
+        raise NotImplementedError("Implement ManualLayerNorm.forward")
