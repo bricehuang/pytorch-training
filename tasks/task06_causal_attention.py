@@ -24,13 +24,13 @@ class CausalSelfAttention(nn.Module):
     ) -> None:
         super().__init__()
         if model_dim % num_heads != 0:
-            raise ValueError(f"model_dim={model_dim} must divide num_heads={num_heads}")
+            raise ValueError(f"num_heads={num_heads} must divide model_dim={model_dim}")
         self.D = model_dim
         self.H = num_heads
         self.Dh = model_dim // num_heads
         self.qkv = nn.Linear(model_dim, 3*model_dim, bias=False)
-        self.out = nn.Linear(model_dim, model_dim, bias=False)
         self.dropout = nn.Dropout(dropout)
+        self.out = nn.Linear(model_dim, model_dim, bias=False)
 
     def forward(
         self,
@@ -50,32 +50,29 @@ class CausalSelfAttention(nn.Module):
         B, T, D = x.shape
         H, Dh = self.H, self.Dh
         qkv: torch.Tensor = self.qkv(x) # [B, T, 3D]
-        q, k, v = qkv.chunk(chunks=3, dim=-1) # [B, T, D] each
-        q = q.reshape(B, T, H, Dh).transpose(1,2) # [B, H, T, Dh]
-        k = k.reshape(B, T, H, Dh).transpose(1,2) # [B, H, T, Dh]
-        v = v.reshape(B, T, H, Dh).transpose(1,2) # [B, H, T, Dh]
+        q, k, v = qkv.chunk(3, dim=-1) # [B, T, D] each
+        q = q.reshape(B, T, H, Dh).transpose(-2,-3) # [B, H, T, Dh]
+        k = k.reshape(B, T, H, Dh).transpose(-2,-3) # [B, H, T, Dh]
+        v = v.reshape(B, T, H, Dh).transpose(-2,-3) # [B, H, T, Dh]
+        attn = q @ k.transpose(-1,-2) * (Dh ** -0.5) # [B, H, T, T]
         mask = torch.tril(
-            torch.ones(T, T, dtype=torch.bool, device=x.device)
+            torch.ones(size=(T,T), dtype=torch.bool, device=x.device)
         ).unsqueeze(0).unsqueeze(0) # [1, 1, T, T]
         if padding_mask is not None:
-            pad = padding_mask.unsqueeze(1).unsqueeze(1) # [B, 1, 1, T]
-            mask = mask & pad
-            # mask columns only because
-            # 1 1 1
-            # 1 1 1
-            # 1 1 1
-            # -> 
-            # 1 1 -inf
-            # 1 1 -inf
-            # 1 1 -inf
-            # is still fine for row-wise softmax
-        attn = q @ k.transpose(-1,-2) * (Dh ** -0.5) # [B, H, T, T]
-        attn = torch.masked_fill(attn, ~mask, float("-inf"))
+            mask = mask & padding_mask.unsqueeze(1).unsqueeze(1) # [B, 1, 1, T]
+            # 1 1 0
+            # 1 1 0
+            # 1 1 0
+            # row softmaxes still ok after erasing column
+        attn = torch.masked_fill(attn, ~mask, float("-inf")) # [B, H, T, T]
         probs = F.softmax(attn, dim=-1) # [B, H, T, T]
-        vals = probs @ v # [B, H, T, Dh]
-        head_concat = vals.transpose(1,2).reshape(B, T, D)
-        out = self.out(head_concat)
+        probs = self.dropout(probs)
+        attn_out = probs @ v # [B, H, T, Dh]
+        attn_out = attn_out.transpose(-2,-3).reshape(B, T, D)
         if padding_mask is not None:
-            out_pad = padding_mask.unsqueeze(-1) # [B, T, 1]
-            out = torch.masked_fill(out, ~out_pad, 0.0)
-        return out
+            attn_out = torch.masked_fill(
+                attn_out,
+                ~padding_mask.unsqueeze(-1), # [B, T, 1]
+                0,
+            )
+        return self.out(attn_out)

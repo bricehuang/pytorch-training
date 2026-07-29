@@ -31,22 +31,22 @@ def train_logistic_regression(
         Do not use ``nn.Module`` or ``torch.optim``.
     """
     _, D = X.shape
+    w = torch.zeros(size=(D,1), requires_grad=True, dtype=X.dtype, device=X.device)
+    b = torch.zeros(size=(1,), requires_grad=True, dtype=X.dtype, device=X.device)
     y = y.long()
-    w = torch.zeros((D,1), requires_grad=True)
-    b = torch.zeros((1,), requires_grad=True)
     loss_history = []
     for _ in range(steps):
         w.grad = None
         b.grad = None
-        scores = X @ w + b
+        scores = X @ w + b # [N,1]
         logits = torch.cat(
             (torch.zeros_like(scores), scores),
-            dim=1
+            dim=-1,
         )
         loss = F.cross_entropy(logits, y)
         loss.backward()
-        loss_history.append(loss.item())
         with torch.no_grad():
-            w -= learning_rate * w.grad
-            b -= learning_rate * b.grad
-    return (w, b, loss_history)
+            w -= w.grad * learning_rate
+            b -= b.grad * learning_rate
+        loss_history.append(loss.item())
+    return w, b, loss_history

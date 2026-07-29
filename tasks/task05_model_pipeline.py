@@ -31,14 +31,14 @@ class ResidualBlock(nn.Module):
 
     def __init__(self, hidden_dim: int, dropout: float) -> None:
         super().__init__()
-        self.ln = nn.LayerNorm(hidden_dim)
-        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
+        self.ln = nn.LayerNorm(normalized_shape=hidden_dim)
+        self.l1 = nn.Linear(in_features=hidden_dim, out_features=hidden_dim)
         self.gelu = nn.GELU()
-        self.dropout = nn.Dropout(dropout)
-        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=dropout)
+        self.l2 = nn.Linear(in_features=hidden_dim, out_features=hidden_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.lin2(self.dropout(self.gelu(self.lin1(self.ln(x)))))
+        return x + self.l2(self.dropout(self.gelu(self.l1(self.ln(x)))))
 
 
 class ResidualMLP(nn.Module):
@@ -53,21 +53,21 @@ class ResidualMLP(nn.Module):
         dropout: float,
     ) -> None:
         super().__init__()
-        self.lin_in = nn.Linear(input_dim, hidden_dim)
+        self.lin = nn.Linear(in_features=input_dim, out_features=hidden_dim)
         self.blocks = nn.ModuleList(
             [
-                ResidualBlock(hidden_dim, dropout)
+                ResidualBlock(hidden_dim=hidden_dim, dropout=dropout)
                 for _ in range(num_blocks)
             ]
         )
-        self.lin_out = nn.Linear(hidden_dim, num_classes)
+        self.lout = nn.Linear(in_features=hidden_dim, out_features=num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return logits with shape ``[B, num_classes]``."""
-        h = self.lin_in(x)
+        h = self.lin(x)
         for block in self.blocks:
             h = block(h)
-        return self.lin_out(h)
+        return self.lout(h)
 
 
 def train_one_epoch(
@@ -79,22 +79,21 @@ def train_one_epoch(
     max_grad_norm: float = 1.0,
 ) -> float:
     """Train for one epoch and return mean loss per example."""
-    model.to(device)
     model.train()
+    model.to(device)
     num_examples = 0
     total_loss = 0
     for features, labels in loader:
-        optimizer.zero_grad(set_to_none=True)
         features = features.to(device)
         labels = labels.to(device)
-        logits = model(features)
+        optimizer.zero_grad(set_to_none=True)
+        logits = model(features) # [B, num_classes]
         loss = F.cross_entropy(logits, labels)
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
         optimizer.step()
-        n = len(labels)
-        num_examples += n
-        total_loss += n * loss.item()
+        num_examples += len(labels)
+        total_loss += len(labels) * loss.item()
     return total_loss / num_examples
 
 
@@ -105,22 +104,20 @@ def evaluate(
     device: torch.device,
 ) -> tuple[float, float]:
     """Return ``(mean_loss, accuracy)`` for a classification loader."""
-    model.to(device)
     model.eval()
+    model.to(device)
     num_examples = 0
     num_correct = 0
     total_loss = 0
     for features, labels in loader:
         features = features.to(device)
         labels = labels.to(device)
-        logits = model(features)
+        logits: torch.Tensor = model(features) # [B, num_classes]
         loss = F.cross_entropy(logits, labels)
-        predictions = logits.argmax(dim=-1)
-        n = len(labels)
-        c = int((predictions == labels).sum())
-        num_examples += n
-        num_correct += c
-        total_loss += n * loss.item()
+        predictions = logits.argmax(dim=-1) # [B]
+        num_examples += len(labels)
+        num_correct += int((predictions == labels).sum())
+        total_loss += len(labels) * loss.item()
     return (total_loss / num_examples, num_correct / num_examples)
 
 
@@ -131,13 +128,12 @@ def save_checkpoint(
     **metadata: Any,
 ) -> None:
     """Save model state, optimizer state, and optional metadata."""
-    checkpoint = {
+    state = {
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "metadata": metadata
     }
-    torch.save(checkpoint, path)
-
+    torch.save(state, path)
 
 def load_checkpoint(
     path: str | PathLike[str],
@@ -147,10 +143,10 @@ def load_checkpoint(
     map_location: str | torch.device = "cpu",
 ) -> dict[str, Any]:
     """Restore model and optimizer, returning saved metadata."""
-    checkpoint = torch.load(path, map_location=map_location)
-    model.load_state_dict(checkpoint["model"])
-    optimizer.load_state_dict(checkpoint["optimizer"])
-    return checkpoint["metadata"]
+    state = torch.load(path, map_location=map_location)
+    model.load_state_dict(state["model"])
+    optimizer.load_state_dict(state["optimizer"])
+    return state["metadata"]
 
 
 def summarize_dataset(
@@ -158,15 +154,14 @@ def summarize_dataset(
     labels: torch.Tensor,
     batch_size: int,
 ) -> tuple[int, int, torch.Tensor]:
+    """return (total_examples, total_positive, mean_feature) after loading ClassificationDataset through DataLoader """
     dataset = ClassificationDataset(features, labels)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=False)
-    total_examples = 0
-    total_positive = 0
+    loader = DataLoader(dataset, batch_size=batch_size)
+    num_examples = 0
+    num_positive = 0
     sum_feature = torch.zeros_like(features[0])
-    for f, l in loader:
-        total_examples += len(l)
-        total_positive += int((l == 1).sum())
-        sum_feature += f.sum(dim=0, keepdim=False)
-    mean_feature = sum_feature / total_examples
-    assert torch.allclose(mean_feature, features.mean(dim=0))
-    return (total_examples, total_positive, mean_feature)
+    for feature_batch, label_batch in loader:
+        num_examples += len(label_batch)
+        num_positive += int((label_batch == 1).sum())
+        sum_feature += feature_batch.sum(dim=0)
+    return (num_examples, num_positive, sum_feature / num_examples)

@@ -7,10 +7,11 @@ import torch
 
 def stable_log_softmax(logits: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """Compute log-softmax without PyTorch's softmax/logsumexp helpers."""
-    shift_logits = logits - logits.amax(dim=dim, keepdim=True)
-    log_denominator = torch.log(torch.exp(shift_logits).sum(dim=dim, keepdim=True))
-    return shift_logits - log_denominator
-
+    logits = logits - logits.amax(dim=dim, keepdim=True) # [..., D]
+    log_normalization = torch.log(
+        torch.exp(logits).sum(dim=dim,keepdim=True)
+    )
+    return logits - log_normalization
 
 def masked_softmax(
     scores: torch.Tensor,
@@ -26,11 +27,8 @@ def masked_softmax(
             allowed element.
         dim: Softmax dimension.
     """
-    masked_scores = scores.masked_fill(~mask, value=-torch.inf)
-    shift_logits = masked_scores - masked_scores.amax(dim=dim, keepdim=True)
-    numerator = torch.exp(shift_logits)
-    denominator = numerator.sum(dim=dim, keepdim=True)
-    return numerator / denominator
+    logits = torch.masked_fill(scores, ~mask, float("-inf"))
+    return torch.exp(stable_log_softmax(logits, dim))
 
 
 def cross_entropy_from_logits(
@@ -42,12 +40,10 @@ def cross_entropy_from_logits(
     Do not use PyTorch's softmax, log-softmax, logsumexp, or cross-entropy
     implementations inside this function.
     """
-    shift_logits = logits - logits.amax(dim=-1, keepdim=True)
-    B = targets.shape[0]
-    indexed_logits = shift_logits.gather(
+    log_softmax = stable_log_softmax(logits, dim=-1)
+    entropies = torch.gather(
+        log_softmax,
         dim=-1,
         index=targets.unsqueeze(-1)
-    ).squeeze(-1)
-    indexed_logits = shift_logits[torch.arange(B), targets]
-    log_denominator = torch.log(torch.exp(shift_logits).sum(dim=-1))
-    return (log_denominator - indexed_logits).mean()
+    )
+    return -entropies.mean()
